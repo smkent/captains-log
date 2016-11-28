@@ -87,22 +87,27 @@ class CaptainsLog():
 
         first = True
         count = 0
+        p = subprocess.Popen(['less', '-X', '-R', '-F', '-'],
+                             stdin=subprocess.PIPE)
         for i in range((until_date - from_date).days, -1, -1):
             log_date = from_date + datetime.timedelta(days=i)
             lf = log_date.strftime('%Y/%m/%d')
             if not os.path.isfile(lf):
                 continue
             if not first:
-                print()
+                print(file=p.stdin)
             display_date = self.format_display_date(log_date)
-            print('>> {}{}'.format(display_date, os.linesep))
+            print('>> {}{}'.format(display_date, os.linesep), file=p.stdin)
             with open(lf, 'r') as f:
                 print(os.linesep.join(['    {}'.format(x) for x in
-                                       f.read().strip().splitlines()]))
+                                       f.read().strip().splitlines()]),
+                      file=p.stdin)
             first = False
             count += 1
             if self.args.num > 0 and count >= self.args.num:
                 break
+        p.stdin.flush()
+        p.communicate()
         sys.exit(0)
 
     def write_log(self):
@@ -182,8 +187,8 @@ class CaptainsLog():
         if not parse_date:
             return datetime.datetime.today()
         cmd = ['date', '+%s', '--date={}'.format(parse_date)]
-        d_o = subprocess.check_output(cmd, stderr=open('/dev/null', 'w'))
-        return datetime.datetime.fromtimestamp(float(d_o))
+        output = subprocess.check_output(cmd, stderr=open('/dev/null', 'w'))
+        return datetime.datetime.fromtimestamp(float(output))
 
     def format_display_date(self, date):
         return date.strftime('%A, %B %-d, %Y')
