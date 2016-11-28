@@ -16,135 +16,6 @@ DEFAULT_DATA_DIR = os.path.join(os.path.expanduser('~'),
 
 
 class CaptainsLog():
-    def parse_arguments(self):
-        description = 'Captain\'s Log'
-        ap = argparse.ArgumentParser(description=description)
-        ap.add_argument('--init', dest='init', action='store_true',
-                        help='Create a new log in the current directory')
-        ap.add_argument('-f', '-d', '--from-date', '--date', dest='date',
-                        metavar='date')
-        ap.add_argument('-u', '--until-date', dest='until_date',
-                        metavar='date')
-        ap.add_argument('-r', '--read', dest='read', action='store_true',
-                        help='Print the log entry for today')
-        ap.add_argument('-n', '-n', dest='num', metavar='num', default=0,
-                        help='Number of log entries to show')
-        ap.add_argument('-m', '--message', dest='message', metavar='message',
-                        help='Log message to append')
-        ap.add_argument('text', nargs='*', help='Command or log text')
-        self.args = ap.parse_args()
-        # Validate arguments
-        if self.args.num > 0:
-            self.args.read = True
-        # Parse positional command line arguments
-        if self.args.text:
-            self.parse_positional_arguments()
-
-    def parse_positional_arguments(self):
-        if not self.args.read:
-            for word in ['read', 'log']:
-                if word.startswith(self.args.text[0]):
-                    self.args.read = True
-                    self.args.text.pop(0)
-                    if not len(self.args.text):
-                        return
-                    break
-        if not self.args.date:
-            try:
-                # If a date is specified, show only the log for that specific
-                # date
-                self.args.text_date = self.parse_date(' '.join(self.args.text))
-                self.args.date = self.args.text_date
-                self.args.until_date = self.args.text_date
-                self.args.read = True
-                return
-            except subprocess.CalledProcessError:
-                pass
-        if (self.args.text[0].startswith('-') and
-                self.args.text[0][1:].isdigit()):
-            self.args.read = True
-            self.args.num = int(self.args.text.pop()[1:])
-            if not len(self.args.text):
-                return
-        if not self.args.read and not self.args.message:
-            self.args.message = ' '.join(self.args.text)
-            return
-        raise Exception(('Unrecognized arguments: '
-                         '{}').format(' '.join(self.args.text)))
-
-    def check_valid_log_dir(self):
-        if (not os.path.isdir('.git') or not os.path.isfile(VERSION_FILE)):
-            return False
-        with open(VERSION_FILE, 'r') as f:
-            return f.read().strip() == VERSION_FILE_CONTENTS
-
-    def init(self):
-        if os.path.isfile(VERSION_FILE):
-            raise Exception('Error: File "{}" already '
-                            'exists').format(VERSION_FILE)
-        if os.path.isdir('.git'):
-            raise Exception('Error: There is already a log in the current '
-                            'directory')
-        subprocess.check_call(['git', 'init'])
-        with open(VERSION_FILE, 'w') as f:
-            f.write(VERSION_FILE_CONTENTS)
-        subprocess.check_call(['git', 'add', VERSION_FILE])
-        subprocess.check_call(['git', 'commit', '-m',
-                               'Create new log directory'])
-        sys.exit(0)
-
-    def parse_date(self, parse_date):
-        if not parse_date:
-            return datetime.datetime.today()
-        cmd = ['date', '+%s', '--date={}'.format(parse_date)]
-        d_o = subprocess.check_output(cmd, stderr=open('/dev/null', 'w'))
-        return datetime.datetime.fromtimestamp(float(d_o))
-
-    def find_earliest_log_date(self):
-        def _lowest_numbered_dir(search_dir, min_length=1):
-            min_num = None
-            dir_contents = os.listdir(search_dir)
-            for i in dir_contents:
-                if len(i) >= min_length and i.isdigit():
-                    min_num = min(i, min_num) if min_num else i
-            return int(min_num)
-        try:
-            year = _lowest_numbered_dir('.', 4)
-        except Exception:
-            return None
-        month = _lowest_numbered_dir('{}'.format(year))
-        day = _lowest_numbered_dir('{}/{}'.format(year, month))
-        return datetime.datetime(year, month, day)
-
-    def read(self, log_dir, log_file):
-        if self.args.date:
-            from_date = self.parse_date(self.args.date)
-        else:
-            from_date = self.find_earliest_log_date() or \
-                datetime.datetime.today()
-        until_date = self.parse_date(self.args.until_date)
-        first = True
-
-        # for i in range((until_date - from_date).days + 1):
-        count = 0
-        for i in range((until_date - from_date).days, -1, -1):
-            log_date = from_date + datetime.timedelta(days=i)
-            lf = log_date.strftime('%Y/%m/%d')
-            if not os.path.isfile(lf):
-                continue
-            if not first:
-                print()
-            display_date = log_date.strftime('%A, %B %-d, %Y')
-            print('>> {}{}'.format(display_date, os.linesep))
-            with open(lf, 'r') as f:
-                print(os.linesep.join(['    {}'.format(x) for x in
-                                       f.read().strip().splitlines()]))
-            first = False
-            count += 1
-            if self.args.num > 0 and count >= self.args.num:
-                break
-        sys.exit(0)
-
     def main(self):
         self.parse_arguments()
 
@@ -208,6 +79,135 @@ class CaptainsLog():
                 subprocess.check_call(['git', 'commit', '-m', message])
             else:
                 print('No changes to the log.')
+
+    def parse_arguments(self):
+        description = 'Captain\'s Log'
+        ap = argparse.ArgumentParser(description=description)
+        ap.add_argument('--init', dest='init', action='store_true',
+                        help='Create a new log in the current directory')
+        ap.add_argument('-f', '-d', '--from-date', '--date', dest='date',
+                        metavar='date')
+        ap.add_argument('-u', '--until-date', dest='until_date',
+                        metavar='date')
+        ap.add_argument('-r', '--read', dest='read', action='store_true',
+                        help='Print the log entry for today')
+        ap.add_argument('-n', '-n', dest='num', metavar='num', default=0,
+                        help='Number of log entries to show')
+        ap.add_argument('-m', '--message', dest='message', metavar='message',
+                        help='Log message to append')
+        ap.add_argument('text', nargs='*', help='Command or log text')
+        self.args = ap.parse_args()
+        # Validate arguments
+        if self.args.num > 0:
+            self.args.read = True
+        # Parse positional command line arguments
+        if self.args.text:
+            self.parse_positional_arguments()
+
+    def parse_positional_arguments(self):
+        if not self.args.read:
+            for word in ['read', 'log']:
+                if word.startswith(self.args.text[0]):
+                    self.args.read = True
+                    self.args.text.pop(0)
+                    if not len(self.args.text):
+                        return
+                    break
+        if not self.args.date:
+            try:
+                # If a date is specified, show only the log for that specific
+                # date
+                self.args.text_date = self.parse_date(' '.join(self.args.text))
+                self.args.date = self.args.text_date
+                self.args.until_date = self.args.text_date
+                self.args.read = True
+                return
+            except subprocess.CalledProcessError:
+                pass
+        if (self.args.text[0].startswith('-') and
+                self.args.text[0][1:].isdigit()):
+            self.args.read = True
+            self.args.num = int(self.args.text.pop()[1:])
+            if not len(self.args.text):
+                return
+        if not self.args.read and not self.args.message:
+            self.args.message = ' '.join(self.args.text)
+            return
+        raise Exception(('Unrecognized arguments: '
+                         '{}').format(' '.join(self.args.text)))
+
+    def init(self):
+        if os.path.isfile(VERSION_FILE):
+            raise Exception('Error: File "{}" already '
+                            'exists').format(VERSION_FILE)
+        if os.path.isdir('.git'):
+            raise Exception('Error: There is already a log in the current '
+                            'directory')
+        subprocess.check_call(['git', 'init'])
+        with open(VERSION_FILE, 'w') as f:
+            f.write(VERSION_FILE_CONTENTS)
+        subprocess.check_call(['git', 'add', VERSION_FILE])
+        subprocess.check_call(['git', 'commit', '-m',
+                               'Create new log directory'])
+        sys.exit(0)
+
+    def read(self, log_dir, log_file):
+        if self.args.date:
+            from_date = self.parse_date(self.args.date)
+        else:
+            from_date = self.find_earliest_log_date() or \
+                datetime.datetime.today()
+        until_date = self.parse_date(self.args.until_date)
+        first = True
+
+        # for i in range((until_date - from_date).days + 1):
+        count = 0
+        for i in range((until_date - from_date).days, -1, -1):
+            log_date = from_date + datetime.timedelta(days=i)
+            lf = log_date.strftime('%Y/%m/%d')
+            if not os.path.isfile(lf):
+                continue
+            if not first:
+                print()
+            display_date = log_date.strftime('%A, %B %-d, %Y')
+            print('>> {}{}'.format(display_date, os.linesep))
+            with open(lf, 'r') as f:
+                print(os.linesep.join(['    {}'.format(x) for x in
+                                       f.read().strip().splitlines()]))
+            first = False
+            count += 1
+            if self.args.num > 0 and count >= self.args.num:
+                break
+        sys.exit(0)
+
+    def check_valid_log_dir(self):
+        if (not os.path.isdir('.git') or not os.path.isfile(VERSION_FILE)):
+            return False
+        with open(VERSION_FILE, 'r') as f:
+            return f.read().strip() == VERSION_FILE_CONTENTS
+
+    def parse_date(self, parse_date):
+        if not parse_date:
+            return datetime.datetime.today()
+        cmd = ['date', '+%s', '--date={}'.format(parse_date)]
+        d_o = subprocess.check_output(cmd, stderr=open('/dev/null', 'w'))
+        return datetime.datetime.fromtimestamp(float(d_o))
+
+    def find_earliest_log_date(self):
+        def _lowest_numbered_dir(search_dir, min_length=1):
+            min_num = None
+            dir_contents = os.listdir(search_dir)
+            for i in dir_contents:
+                if len(i) >= min_length and i.isdigit():
+                    min_num = min(i, min_num) if min_num else i
+            return int(min_num)
+        try:
+            year = _lowest_numbered_dir('.', 4)
+        except Exception:
+            return None
+        month = _lowest_numbered_dir('{}'.format(year))
+        day = _lowest_numbered_dir('{}/{}'.format(year, month))
+        return datetime.datetime(year, month, day)
 
 
 def main():
