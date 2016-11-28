@@ -18,74 +18,15 @@ DEFAULT_DATA_DIR = os.path.join(os.path.expanduser('~'),
 class CaptainsLog():
     def main(self):
         self.parse_arguments()
-
-        if self.args.init:
-            self.init()
-
-        if not self.check_valid_log_dir():
-            raise Exception('This is not a valid log directory')
-
-        log_date = self.parse_date(self.args.date)
-        log_file = log_date.strftime('%Y/%m/%d')
-        log_dir = os.path.dirname(log_file)
-
         if self.args.read:
-            self.read(log_dir, log_file)
-
-        if not os.path.isdir(log_dir):
-            os.makedirs(log_dir, 0o0700)
-
-        log_entry = None
-        log_append = False
-        if self.args.message is not None:
-            log_entry = self.args.message
-            log_append = True
-        else:
-            with tempfile.NamedTemporaryFile() as f:
-                if os.path.isfile(log_file):
-                    with open(log_file, 'r') as f2:
-                        f.write(f2.read().strip())
-                f.write(os.linesep * 2)
-                print('# Add your log entry above', file=f)
-                print('# Lines starting with \'#\' will be ignored', file=f)
-                print('# vim: ft=gitcommit', file=f)
-                f.flush()
-                subprocess.check_call([os.environ.get('EDITOR'), f.name])
-                f.seek(0, 0)
-                lines = f.readlines()
-                entry_lines = []
-                for line in lines:
-                    if line.startswith('#'):
-                        continue
-                    entry_lines.append(line.strip())
-                log_entry = os.linesep.join(entry_lines).strip()
-
-        if log_entry:
-            print('Writing log entry: [{}]'.format(log_entry))
-            log_exists = os.path.isfile(log_file)
-            with open(log_file, 'a' if log_append else 'w') as f:
-                if log_append:
-                    f.write(os.linesep)
-                f.write(log_entry)
-                f.write(os.linesep)
-            git_status = subprocess.check_output(['git', 'status', '--short',
-                                                  '--', log_file]).strip()
-            if git_status:
-                subprocess.check_call(['git', 'add', '--', log_file])
-                display_date = log_date.strftime('%A, %B %-d, %Y')
-                message = '{} log for {}'.format('Update' if log_exists else
-                                                 'Create',
-                                                 display_date)
-                subprocess.check_call(['git', 'commit', '-m', message])
-            else:
-                print('No changes to the log.')
+            # Display existing log entries
+            self.read_log()
+        self.write_log()
 
     def parse_arguments(self):
         description = 'Captain\'s Log'
         ap = argparse.ArgumentParser(description=description)
-        ap.add_argument('--init', dest='init', action='store_true',
-                        help='Create a new log in the current directory')
-        ap.add_argument('-f', '-d', '--from-date', '--date', dest='date',
+        ap.add_argument('-d', '-f', '--date', '--from-date', dest='date',
                         metavar='date')
         ap.add_argument('-u', '--until-date', dest='until_date',
                         metavar='date')
@@ -136,31 +77,15 @@ class CaptainsLog():
         raise Exception(('Unrecognized arguments: '
                          '{}').format(' '.join(self.args.text)))
 
-    def init(self):
-        if os.path.isfile(VERSION_FILE):
-            raise Exception('Error: File "{}" already '
-                            'exists').format(VERSION_FILE)
-        if os.path.isdir('.git'):
-            raise Exception('Error: There is already a log in the current '
-                            'directory')
-        subprocess.check_call(['git', 'init'])
-        with open(VERSION_FILE, 'w') as f:
-            f.write(VERSION_FILE_CONTENTS)
-        subprocess.check_call(['git', 'add', VERSION_FILE])
-        subprocess.check_call(['git', 'commit', '-m',
-                               'Create new log directory'])
-        sys.exit(0)
-
-    def read(self, log_dir, log_file):
+    def read_log(self):
         if self.args.date:
             from_date = self.parse_date(self.args.date)
         else:
             from_date = self.find_earliest_log_date() or \
                 datetime.datetime.today()
         until_date = self.parse_date(self.args.until_date)
-        first = True
 
-        # for i in range((until_date - from_date).days + 1):
+        first = True
         count = 0
         for i in range((until_date - from_date).days, -1, -1):
             log_date = from_date + datetime.timedelta(days=i)
@@ -169,7 +94,7 @@ class CaptainsLog():
                 continue
             if not first:
                 print()
-            display_date = log_date.strftime('%A, %B %-d, %Y')
+            display_date = self.format_display_date(log_date)
             print('>> {}{}'.format(display_date, os.linesep))
             with open(lf, 'r') as f:
                 print(os.linesep.join(['    {}'.format(x) for x in
@@ -180,11 +105,78 @@ class CaptainsLog():
                 break
         sys.exit(0)
 
-    def check_valid_log_dir(self):
-        if (not os.path.isdir('.git') or not os.path.isfile(VERSION_FILE)):
-            return False
-        with open(VERSION_FILE, 'r') as f:
-            return f.read().strip() == VERSION_FILE_CONTENTS
+    def write_log(self):
+        self.check_or_create_log_dir()
+
+        log_date = self.parse_date(self.args.date)
+        log_file = log_date.strftime('%Y/%m/%d')
+
+        log_dir = os.path.dirname(log_file)
+        if not os.path.isdir(log_dir):
+            os.makedirs(log_dir, 0o0700)
+
+        log_entry = None
+        log_append = False
+        if self.args.message is not None:
+            log_entry = self.args.message
+            log_append = True
+        else:
+            with tempfile.NamedTemporaryFile() as f:
+                if os.path.isfile(log_file):
+                    with open(log_file, 'r') as f2:
+                        f.write(f2.read().strip())
+                f.write(os.linesep * 2)
+                print('# Add your log entry above', file=f)
+                print('# Lines starting with \'#\' will be ignored', file=f)
+                print('# vim: ft=gitcommit', file=f)
+                f.flush()
+                subprocess.check_call([os.environ.get('EDITOR'), f.name])
+                f.seek(0, 0)
+                lines = f.readlines()
+                entry_lines = []
+                for line in lines:
+                    if line.startswith('#'):
+                        continue
+                    entry_lines.append(line.strip())
+                log_entry = os.linesep.join(entry_lines).strip()
+
+        if log_entry:
+            print('Writing log entry: [{}]'.format(log_entry))
+            log_exists = os.path.isfile(log_file)
+            with open(log_file, 'a' if log_append else 'w') as f:
+                if log_append:
+                    f.write(os.linesep)
+                f.write(log_entry)
+                f.write(os.linesep)
+            git_status = subprocess.check_output(['git', 'status', '--short',
+                                                  '--', log_file]).strip()
+            if git_status:
+                subprocess.check_call(['git', 'add', '--', log_file])
+                display_date = self.format_display_date(log_date)
+                message = '{} log for {}'.format('Update' if log_exists else
+                                                 'Create',
+                                                 display_date)
+                subprocess.check_call(['git', 'commit', '-m', message])
+            else:
+                print('No changes to the log.')
+
+    def check_or_create_log_dir(self):
+        if os.path.isfile(VERSION_FILE):
+            with open(VERSION_FILE, 'r') as f:
+                if f.read().strip() != VERSION_FILE_CONTENTS:
+                    raise Exception('Log storage version mismatch')
+            if not os.path.isdir('.git'):
+                raise Exception('The log repository is missing')
+        else:
+            if os.path.isdir('.git'):
+                raise Exception('There is an existing repository in this '
+                                'directory')
+            subprocess.check_call(['git', 'init'])
+            with open(VERSION_FILE, 'w') as f:
+                f.write(VERSION_FILE_CONTENTS)
+            subprocess.check_call(['git', 'add', VERSION_FILE])
+            subprocess.check_call(['git', 'commit', '-m',
+                                   'Create new log directory'])
 
     def parse_date(self, parse_date):
         if not parse_date:
@@ -192,6 +184,9 @@ class CaptainsLog():
         cmd = ['date', '+%s', '--date={}'.format(parse_date)]
         d_o = subprocess.check_output(cmd, stderr=open('/dev/null', 'w'))
         return datetime.datetime.fromtimestamp(float(d_o))
+
+    def format_display_date(self, date):
+        return date.strftime('%A, %B %-d, %Y')
 
     def find_earliest_log_date(self):
         def _lowest_numbered_dir(search_dir, min_length=1):
