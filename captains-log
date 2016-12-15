@@ -117,6 +117,7 @@ class CaptainsLog():
 
     def write_log(self):
         log_date = self.parse_date(self.args.date)
+        display_date = self.format_display_date(log_date)
         log_file = log_date.strftime('%Y/%m/%d')
 
         log_dir = os.path.dirname(log_file)
@@ -125,17 +126,19 @@ class CaptainsLog():
 
         log_entry = None
         log_append = False
+        existing_entry = self.get_log_entry(log_date)
         if self.args.message is not None:
             log_entry = self.args.message
             log_append = True
         else:
             with tempfile.NamedTemporaryFile() as f:
-                if os.path.isfile(log_file):
-                    with open(log_file, 'r') as f2:
-                        f.write(f2.read().strip())
+                if existing_entry:
+                    f.write(existing_entry)
                 f.write(os.linesep * 2)
+                print('# Log entry for {}'.format(display_date), file=f)
                 print('# Add your log entry above', file=f)
                 print('# Lines starting with \'#\' will be ignored', file=f)
+                print('#', file=f)
                 print('# vim: ft=gitcommit', file=f)
                 f.flush()
                 subprocess.check_call([os.environ.get('EDITOR'), f.name])
@@ -148,25 +151,31 @@ class CaptainsLog():
                     entry_lines.append(line.strip())
                 log_entry = os.linesep.join(entry_lines).strip()
 
-        if log_entry:
-            print('Writing log entry: [{}]'.format(log_entry))
-            log_exists = os.path.isfile(log_file)
-            with open(log_file, 'a' if log_append else 'w') as f:
-                if log_append:
-                    f.write(os.linesep)
-                f.write(log_entry)
+        if log_entry == existing_entry:
+            print('Log entry unmodified.', file=sys.stderr)
+            return
+
+        if not log_entry:
+            print('No log entry entered, no changes made.', file=sys.stderr)
+            return
+
+        print('Writing log entry: [{}]'.format(log_entry))
+        log_exists = os.path.isfile(log_file)
+        with open(log_file, 'a' if log_append else 'w') as f:
+            if log_append:
                 f.write(os.linesep)
-            git_status = subprocess.check_output(['git', 'status', '--short',
-                                                  '--', log_file]).strip()
-            if git_status:
-                subprocess.check_call(['git', 'add', '--', log_file])
-                display_date = self.format_display_date(log_date)
-                message = '{} log for {}'.format('Update' if log_exists else
-                                                 'Create',
-                                                 display_date)
-                subprocess.check_call(['git', 'commit', '-m', message])
-            else:
-                print('No changes to the log.')
+            f.write(log_entry)
+            f.write(os.linesep)
+        git_status = subprocess.check_output(['git', 'status', '--short',
+                                              '--', log_file]).strip()
+        if git_status:
+            subprocess.check_call(['git', 'add', '--', log_file])
+            message = '{} log for {}'.format('Update' if log_exists else
+                                             'Create',
+                                             display_date)
+            subprocess.check_call(['git', 'commit', '-m', message])
+        else:
+            print('No changes to commit.')
 
     def check_or_create_log_dir(self, create=False):
         if os.path.isfile(VERSION_FILE):
@@ -187,6 +196,13 @@ class CaptainsLog():
             subprocess.check_call(['git', 'add', VERSION_FILE])
             subprocess.check_call(['git', 'commit', '-m',
                                    'Create new log directory'])
+
+    def get_log_entry(self, log_date):
+        log_file = log_date.strftime('%Y/%m/%d')
+        if not os.path.isfile(log_file):
+            return None
+        with open(log_file, 'r') as f:
+            return f.read().strip()
 
     def parse_date(self, parse_date):
         if not parse_date:
