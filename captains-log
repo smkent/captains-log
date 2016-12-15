@@ -127,7 +127,7 @@ class CaptainsLog():
         sys.exit(0)
 
     def write_log(self):
-        log_date = self.parse_date(self.args.date)
+        log_date = self.parse_date(self.args.date, grace=True)
         display_date = self.format_display_date(log_date)
         log_file = log_date.strftime('%Y/%m/%d')
 
@@ -215,8 +215,10 @@ class CaptainsLog():
         with open(log_file, 'r') as f:
             return f.read().strip()
 
-    def parse_date(self, parse_date):
+    def parse_date(self, parse_date, grace=False):
         if not parse_date:
+            if grace:
+                return datetime.datetime.today() - datetime.timedelta(hours=2)
             return datetime.datetime.today()
         cmd = ['date', '+%s', '--date={}'.format(parse_date)]
         output = subprocess.check_output(cmd, stderr=open('/dev/null', 'w'))
