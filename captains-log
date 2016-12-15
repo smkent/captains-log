@@ -196,12 +196,12 @@ class CaptainsLog():
                     entry_lines.append(line.strip())
                 log_entry = os.linesep.join(entry_lines).strip()
         if log_entry == existing_entry:
-            print('Log entry unmodified.', file=sys.stderr)
+            print('Log entry unmodified, exiting.', file=sys.stderr)
             return
         if not log_entry:
-            print('No log entry entered, no changes made.', file=sys.stderr)
+            print('No entry text, exiting.', file=sys.stderr)
             return
-        print('Writing log entry: [{}]'.format(log_entry))
+        print('Writing log entry for {}.'.format(display_date))
         if not os.path.isdir(log_dir):
             os.makedirs(log_dir, 0o0700)
         log_exists = os.path.isfile(log_file)
@@ -219,7 +219,7 @@ class CaptainsLog():
                                              display_date)
             subprocess.check_call(['git', 'commit', '-m', message])
         else:
-            print('No changes to commit.')
+            print('No changes to commit.', file=sys.stderr)
 
     def cmd_search(self, argv=[]):
         description = 'Search previous log entries'
