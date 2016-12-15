@@ -253,14 +253,10 @@ class CaptainsLog():
         return datetime.datetime(log_date[2], log_date[1], log_date[0])
 
 
-def main():
+if __name__ == '__main__':
     try:
         cl = CaptainsLog()
         cl.main()
     except Exception as e:
         print('Error: {}'.format(str(e)), file=sys.stderr)
         sys.exit(1)
-
-
-if __name__ == '__main__':
-    main()
