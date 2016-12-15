@@ -18,6 +18,7 @@ DEFAULT_DATA_DIR = os.path.join(os.path.expanduser('~'),
 class CaptainsLog():
     def main(self):
         self.parse_arguments()
+        self.check_or_create_log_dir(create=not self.args.read)
         if self.args.read:
             # Display existing log entries
             self.read_log()
@@ -111,8 +112,6 @@ class CaptainsLog():
         sys.exit(0)
 
     def write_log(self):
-        self.check_or_create_log_dir()
-
         log_date = self.parse_date(self.args.date)
         log_file = log_date.strftime('%Y/%m/%d')
 
@@ -165,7 +164,7 @@ class CaptainsLog():
             else:
                 print('No changes to the log.')
 
-    def check_or_create_log_dir(self):
+    def check_or_create_log_dir(self, create=False):
         if os.path.isfile(VERSION_FILE):
             with open(VERSION_FILE, 'r') as f:
                 if f.read().strip() != VERSION_FILE_CONTENTS:
@@ -173,6 +172,8 @@ class CaptainsLog():
             if not os.path.isdir('.git'):
                 raise Exception('The log repository is missing')
         else:
+            if not create:
+                raise Exception('Directory does not contain a log')
             if os.path.isdir('.git'):
                 raise Exception('There is an existing repository in this '
                                 'directory')
