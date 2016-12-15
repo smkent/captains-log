@@ -82,9 +82,13 @@ class CaptainsLog():
         if self.args.date:
             from_date = self.parse_date(self.args.date)
         else:
-            from_date = self.find_earliest_log_date() or \
+            from_date = self.find_start_end_log_date(start=True) or \
                 datetime.datetime.today()
-        until_date = self.parse_date(self.args.until_date)
+        if self.args.until_date:
+            until_date = self.parse_date(self.args.until_date)
+        else:
+            until_date = self.find_start_end_log_date(start=False) or \
+                datetime.datetime.today()
 
         first = True
         count = 0
@@ -194,20 +198,26 @@ class CaptainsLog():
     def format_display_date(self, date):
         return date.strftime('%A, %B %-d, %Y')
 
-    def find_earliest_log_date(self):
-        def _lowest_numbered_dir(search_dir, min_length=1):
+    def find_start_end_log_date(self, start=True):
+        def _lowest_numbered_dir(search_dir, min_length=1,
+                                 require_contents=True):
+            cmp_func = min if start else max
             min_num = None
             dir_contents = os.listdir(search_dir)
             for i in dir_contents:
                 if len(i) >= min_length and i.isdigit():
-                    min_num = min(i, min_num) if min_num else i
+                    if require_contents:
+                        if not os.listdir(os.path.join(search_dir, i)):
+                            continue
+                    min_num = cmp_func(i, min_num) if min_num else i
             return int(min_num)
         try:
             year = _lowest_numbered_dir('.', 4)
         except Exception:
             return None
         month = _lowest_numbered_dir('{}'.format(year))
-        day = _lowest_numbered_dir('{}/{}'.format(year, month))
+        day = _lowest_numbered_dir('{}/{:02d}'.format(year, month),
+                                   require_contents=False)
         return datetime.datetime(year, month, day)
 
 
