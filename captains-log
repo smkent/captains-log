@@ -94,8 +94,19 @@ class CaptainsLog():
         count = 0
         p = subprocess.Popen(['less', '-X', '-R', '-F', '-'],
                              stdin=subprocess.PIPE)
+        min_check = None
         for i in range((until_date - from_date).days, -1, -1):
             log_date = from_date + datetime.timedelta(days=i)
+            if min_check:
+                if min_check < log_date:
+                    continue
+            if not os.path.isdir(str(log_date.year)):
+                min_check = datetime.datetime(log_date.year - 1, 12, 31)
+                continue
+            if not os.path.isdir(log_date.strftime('%Y/%m')):
+                min_check = datetime.datetime(log_date.year, log_date.month, 1)
+                min_check -= datetime.timedelta(days=1)
+                continue
             lf = log_date.strftime('%Y/%m/%d')
             if not os.path.isfile(lf):
                 continue
