@@ -8,7 +8,7 @@ new commit in order to preserve the entire history of the log.
 ## Usage
 
 `captains-log` organizes its main actions into commands, similar to `git`.
-The available commands are `read`, `write`, and `search`.
+The available commands are `read`, `write`, `search`, and `history`.
 
 A few shortcuts are available without specifying a command, such as being able
 to simply enter a note into the current day's log by invoking `captains-log`

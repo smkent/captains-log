@@ -18,6 +18,7 @@ DEFAULT_DATA_DIR = os.path.join(os.path.expanduser('~'),
 
 class CaptainsLog():
     cmd_aliases = {'grep': 'search',
+                   'h': 'history',
                    'l': 'read',
                    'log': 'read',
                    'r': 'read',
@@ -228,6 +229,14 @@ class CaptainsLog():
         _, grep_args = ap.parse_known_args(argv)
         self.check_or_create_log_dir(create=False)
         return subprocess.call(['git', 'grep'] + grep_args)
+
+    def cmd_history(self, argv=[]):
+        description = 'Display changes to the log'
+        epilog = 'All arguments are passed directly to git grep.'
+        ap = argparse.ArgumentParser(description=description, epilog=epilog)
+        self.cmd_args = ap.parse_args(argv)
+        self.check_or_create_log_dir(create=False)
+        return subprocess.call(['git', 'log', '-p', '--'])
 
     def check_or_create_log_dir(self, create=False):
         if not os.path.isdir(self.args.data_dir):
