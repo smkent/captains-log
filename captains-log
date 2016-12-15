@@ -118,8 +118,11 @@ class CaptainsLog():
         # Display the log
         first = True
         count = 0
-        p = subprocess.Popen(['less', '-X', '-R', '-F', '-'],
-                             stdin=subprocess.PIPE)
+        pager_cmd = subprocess.check_output(['git', 'config', '--get',
+                                             'core.pager']).strip().split()
+        if not pager_cmd:
+            pager_cmd = ['less', '-X', '-R', '-F']
+        p = subprocess.Popen(pager_cmd + ['-'], stdin=subprocess.PIPE)
         min_check = None
         for i in range((until_date - from_date).days, -1, -1):
             log_date = from_date + datetime.timedelta(days=i)
