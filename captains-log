@@ -231,26 +231,26 @@ class CaptainsLog():
         return date.strftime('%A, %B %-d, %Y')
 
     def find_start_end_log_date(self, start=True):
-        def _lowest_numbered_dir(search_dir, min_length=1,
-                                 require_contents=True):
-            cmp_func = min if start else max
-            min_num = None
-            dir_contents = os.listdir(search_dir)
+        # Recurse into year and month directories in order to find the earliest
+        # dated log entry
+        def _log_entry_search(search_dir, min_length=1, level=2):
+            dir_contents = sorted(os.listdir(search_dir), reverse=not start)
             for i in dir_contents:
-                if len(i) >= min_length and i.isdigit():
-                    if require_contents:
-                        if not os.listdir(os.path.join(search_dir, i)):
-                            continue
-                    min_num = cmp_func(i, min_num) if min_num else i
-            return int(min_num)
-        try:
-            year = _lowest_numbered_dir('.', 4)
-        except Exception:
+                if len(i) < min_length or not i.isdigit():
+                    continue
+                if level > 0:
+                    l = _log_entry_search(os.path.join(search_dir, i),
+                                          level=(level - 1))
+                    if not l:
+                        continue
+                    return l + [int(i)]
+                else:
+                    return [int(i)]
             return None
-        month = _lowest_numbered_dir('{}'.format(year))
-        day = _lowest_numbered_dir('{}/{:02d}'.format(year, month),
-                                   require_contents=False)
-        return datetime.datetime(year, month, day)
+        log_date = _log_entry_search('.', 4)
+        if not log_date:
+            return None
+        return datetime.datetime(log_date[2], log_date[1], log_date[0])
 
 
 def main():
