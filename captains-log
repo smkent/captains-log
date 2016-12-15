@@ -17,9 +17,11 @@ DEFAULT_DATA_DIR = os.path.join(os.path.expanduser('~'),
 
 
 class CaptainsLog():
-    cmd_aliases = {'l': 'read',
+    cmd_aliases = {'grep': 'search',
+                   'l': 'read',
                    'log': 'read',
                    'r': 'read',
+                   's': 'search',
                    'w': 'write'}
 
     def main(self):
@@ -218,6 +220,14 @@ class CaptainsLog():
             subprocess.check_call(['git', 'commit', '-m', message])
         else:
             print('No changes to commit.')
+
+    def cmd_search(self, argv=[]):
+        description = 'Search previous log entries'
+        epilog = 'All arguments are passed directly to git grep.'
+        ap = argparse.ArgumentParser(description=description, epilog=epilog)
+        _, grep_args = ap.parse_known_args(argv)
+        self.check_or_create_log_dir(create=False)
+        return subprocess.call(['git', 'grep'] + grep_args)
 
     def check_or_create_log_dir(self, create=False):
         if not os.path.isdir(self.args.data_dir):
