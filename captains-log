@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import argparse
 import datetime
+import inspect
 import os
 import subprocess
 import sys
@@ -16,80 +17,102 @@ DEFAULT_DATA_DIR = os.path.join(os.path.expanduser('~'),
 
 
 class CaptainsLog():
+    cmd_aliases = {'l': 'read',
+                   'log': 'read',
+                   'r': 'read',
+                   'w': 'write'}
+
     def main(self):
-        self.parse_arguments()
-        self.check_or_create_log_dir(create=not self.args.read)
-        if self.args.read:
-            # Display existing log entries
-            self.read_log()
-        self.write_log()
-
-    def parse_arguments(self):
-        description = 'Captain\'s Log'
-        ap = argparse.ArgumentParser(description=description)
-        ap.add_argument('-d', '-f', '--date', '--from-date', dest='date',
-                        metavar='date')
-        ap.add_argument('-u', '--until-date', dest='until_date',
-                        metavar='date')
-        ap.add_argument('-r', '--read', dest='read', action='store_true',
-                        help='Print the log entry for today')
-        ap.add_argument('-n', '-n', dest='num', metavar='num', default=0,
-                        help='Number of log entries to show')
-        ap.add_argument('-m', '--message', dest='message', metavar='message',
-                        help='Log message to append')
-        ap.add_argument('text', nargs='*', help='Command or log text')
+        argv0 = os.path.basename(sys.argv[0])
+        cmd_list = self.get_cmd_list()
+        description = 'Captain\'s Log: A simple personal log application'
+        epilog = ('Available commands: {}'.format(' '.join(cmd_list)))
+        usage = '{} [options] command [command options]'.format(argv0)
+        ap = argparse.ArgumentParser(description=description, epilog=epilog,
+                                     usage=usage)
+        ap.add_argument('-D', '--data-dir', metavar='dir',
+                        default=DEFAULT_DATA_DIR, help='Data directory')
+        ap.add_argument('cmd_args', metavar='text', nargs=argparse.REMAINDER,
+                        help='Command or log text')
         self.args = ap.parse_args()
-        # Validate arguments
-        if self.args.num > 0:
-            self.args.read = True
-        # Parse positional command line arguments
-        if self.args.text:
-            self.parse_positional_arguments()
 
-    def parse_positional_arguments(self):
-        if not self.args.read:
-            for word in ['read', 'log']:
-                if word.startswith(self.args.text[0]):
-                    self.args.read = True
-                    self.args.text.pop(0)
-                    if not len(self.args.text):
-                        return
-                    break
-        if not self.args.date:
+        # Determine if a command was specified, and invoke it with any
+        # remaining arguments
+        if self.args.cmd_args:
+            if self.args.cmd_args[0] == '--':
+                self.args.cmd_args.pop(0)
+            cmd = self.args.cmd_args[0]
+            if cmd in self.cmd_aliases:
+                cmd = self.cmd_aliases.get(cmd)
+            command_fn = None
             try:
-                # If a date is specified, show only the log for that specific
-                # date
-                self.args.text_date = self.parse_date(' '.join(self.args.text))
-                self.args.date = self.args.text_date
-                self.args.until_date = self.args.text_date
-                self.args.read = True
-                return
-            except subprocess.CalledProcessError:
+                command_fn = getattr(CaptainsLog, 'cmd_{}'.format(cmd))
+            except AttributeError:
                 pass
-        if (self.args.text[0].startswith('-') and
-                self.args.text[0][1:].isdigit()):
-            self.args.read = True
-            self.args.num = int(self.args.text.pop()[1:])
-            if not len(self.args.text):
-                return
-        if not self.args.read and not self.args.message:
-            self.args.message = ' '.join(self.args.text)
-            return
-        raise Exception(('Unrecognized arguments: '
-                         '{}').format(' '.join(self.args.text)))
+            if command_fn:
+                return command_fn(self, self.args.cmd_args[1:])
 
-    def read_log(self):
-        if self.args.date:
-            from_date = self.parse_date(self.args.date)
-        else:
-            from_date = self.find_start_end_log_date(start=True) or \
-                datetime.datetime.today()
-        if self.args.until_date:
-            until_date = self.parse_date(self.args.until_date)
-        else:
-            until_date = self.find_start_end_log_date(start=False) or \
-                datetime.datetime.today()
+        # If no arguments were specified, invoke the write command
+        if not self.args.cmd_args:
+            return self.cmd_write()
 
+        # No matching command was found but arguments are present.
+        # If the command line arguments represent a parsable date, invoke
+        # the read command and display the log for that date
+        try:
+            text_date = ' '.join(self.args.cmd_args)
+            # Ignore result, just check if the text represents a date
+            self.parse_date(text_date)
+            return self.cmd_read(argv=[text_date])
+        except subprocess.CalledProcessError:
+            # The command line arguments do not represent a parsable date
+            pass
+        # If a single short option numeric argument is present (e.g. "-10"),
+        # invoke the read command and display that number of log entries
+        if (self.args.cmd_args[0].startswith('-') and
+                self.args.cmd_args[0][1:].isdigit()):
+            number = self.args.cmd_args.pop()[1:]
+            if not len(self.args.cmd_args):
+                return self.cmd_read(argv=['-n', number])
+        # If no command was specified and no other intent can be determined,
+        # treat all command line arguments as a log message to be automatically
+        # appended to the log for the current date
+        self.args.message = ' '.join(self.args.cmd_args)
+        return self.cmd_write(argv=['--message', self.args.message])
+
+    def cmd_read(self, argv=[]):
+        description = 'Display existing log entries'
+        ap = argparse.ArgumentParser(description=description)
+        ap.add_argument('-n', dest='num', metavar='count', default=0, type=int,
+                        help='Number of log entries to show')
+        ap.add_argument('-f', '--from', dest='from_date', metavar='date',
+                        help='Start showing log entries at this date')
+        ap.add_argument('-u', '--until', dest='until_date', metavar='date',
+                        help='Stop showing log entries at this date')
+        ap.add_argument('single_date', metavar='date', nargs='?',
+                        help='Display log for this date')
+        self.cmd_args = ap.parse_args(argv)
+        self.check_or_create_log_dir(create=False)
+        # Determine date range to display
+        if self.cmd_args.single_date:
+            try:
+                from_date = self.parse_date(self.cmd_args.single_date)
+                until_date = from_date
+            except subprocess.CalledProcessError:
+                raise Exception('Unknown date '
+                                '"{}"'.format(self.cmd_args.single_date))
+        else:
+            if self.cmd_args.from_date:
+                from_date = self.parse_date(self.cmd_args.from_date)
+            else:
+                from_date = self.find_start_end_log_date(start=True) or \
+                    datetime.datetime.today()
+            if self.cmd_args.until_date:
+                until_date = self.parse_date(self.cmd_args.until_date)
+            else:
+                until_date = self.find_start_end_log_date(start=False) or \
+                    datetime.datetime.today()
+        # Display the log
         first = True
         count = 0
         p = subprocess.Popen(['less', '-X', '-R', '-F', '-'],
@@ -120,26 +143,35 @@ class CaptainsLog():
                       file=p.stdin)
             first = False
             count += 1
-            if self.args.num > 0 and count >= self.args.num:
+            if self.cmd_args.num > 0 and count >= self.cmd_args.num:
                 break
         p.stdin.flush()
         p.communicate()
         sys.exit(0)
 
-    def write_log(self):
-        log_date = self.parse_date(self.args.date, grace=True)
+    def cmd_write(self, argv=[]):
+        description = 'Write or append to a log entry'
+        ap = argparse.ArgumentParser(description=description)
+        ap.add_argument('-d', '--date', dest='date', metavar='date',
+                        help='Write/append log entry for this date')
+        ap.add_argument('-m', '--message', dest='message', metavar='text',
+                        help='Log message to append')
+        ap.add_argument('args_message', metavar='text', nargs='*',
+                        help='Log message to append')
+        self.cmd_args = ap.parse_args(argv)
+        if self.cmd_args.args_message and not self.cmd_args.message:
+            self.cmd_args.message = ' '.join(self.cmd_args.args_message)
+        self.check_or_create_log_dir(create=True)
+        log_date = self.parse_date(self.cmd_args.date, grace=True)
         display_date = self.format_display_date(log_date)
         log_file = log_date.strftime('%Y/%m/%d')
-
         log_dir = os.path.dirname(log_file)
-        if not os.path.isdir(log_dir):
-            os.makedirs(log_dir, 0o0700)
 
         log_entry = None
         log_append = False
         existing_entry = self.get_log_entry(log_date)
-        if self.args.message is not None:
-            log_entry = self.args.message
+        if self.cmd_args.message is not None:
+            log_entry = self.cmd_args.message
             log_append = True
         else:
             with tempfile.NamedTemporaryFile() as f:
@@ -161,16 +193,15 @@ class CaptainsLog():
                         continue
                     entry_lines.append(line.strip())
                 log_entry = os.linesep.join(entry_lines).strip()
-
         if log_entry == existing_entry:
             print('Log entry unmodified.', file=sys.stderr)
             return
-
         if not log_entry:
             print('No log entry entered, no changes made.', file=sys.stderr)
             return
-
         print('Writing log entry: [{}]'.format(log_entry))
+        if not os.path.isdir(log_dir):
+            os.makedirs(log_dir, 0o0700)
         log_exists = os.path.isfile(log_file)
         with open(log_file, 'a' if log_append else 'w') as f:
             if log_append:
@@ -189,9 +220,9 @@ class CaptainsLog():
             print('No changes to commit.')
 
     def check_or_create_log_dir(self, create=False):
-        if not os.path.isdir(DEFAULT_DATA_DIR):
-            os.makedirs(DEFAULT_DATA_DIR, 0o0700)
-        os.chdir(DEFAULT_DATA_DIR)
+        if not os.path.isdir(self.args.data_dir):
+            os.makedirs(self.args.data_dir, 0o0700)
+        os.chdir(self.args.data_dir)
         if os.path.isfile(VERSION_FILE):
             with open(VERSION_FILE, 'r') as f:
                 if f.read().strip() != VERSION_FILE_CONTENTS:
@@ -225,7 +256,8 @@ class CaptainsLog():
             return datetime.datetime.today()
         cmd = ['date', '+%s', '--date={}'.format(parse_date)]
         output = subprocess.check_output(cmd, stderr=open('/dev/null', 'w'))
-        return datetime.datetime.fromtimestamp(float(output))
+        dt_time = datetime.datetime.fromtimestamp(float(output))
+        return datetime.datetime(dt_time.year, dt_time.month, dt_time.day)
 
     def format_display_date(self, date):
         return date.strftime('%A, %B %-d, %Y')
@@ -251,6 +283,13 @@ class CaptainsLog():
         if not log_date:
             return None
         return datetime.datetime(log_date[2], log_date[1], log_date[0])
+
+    def get_cmd_list(self):
+        cmd_list = []
+        for m in inspect.getmembers(self, predicate=inspect.ismethod):
+            if m[0].startswith('cmd_'):
+                cmd_list.append(m[0][4:])
+        return cmd_list
 
 
 if __name__ == '__main__':
